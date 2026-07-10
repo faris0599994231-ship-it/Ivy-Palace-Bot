@@ -8,6 +8,29 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+
+def _load_opus():
+    """Load libopus from the Nix store or fall back to default names."""
+    if discord.opus.is_loaded():
+        return
+    candidates = [
+        "/nix/store/0py9xncsn0s6vqxhvqblvhs2cqbb30s8-libopus-1.5.2/lib/libopus.so.0",
+        "libopus.so.0",
+        "libopus.so",
+        "opus",
+    ]
+    for path in candidates:
+        try:
+            discord.opus.load_opus(path)
+            logger.info(f"Loaded opus from: {path}")
+            return
+        except Exception:
+            continue
+    logger.warning("Could not load libopus — voice audio will not work.")
+
+
+_load_opus()
+
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
     "noplaylist": True,

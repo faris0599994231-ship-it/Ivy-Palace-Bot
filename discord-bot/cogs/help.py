@@ -32,20 +32,24 @@ class Help(commands.Cog):
         )
         embed.set_thumbnail(url=self.bot.user.display_avatar.url)
 
-        categories = {
-            "🛡️ Moderation": ["kick", "ban", "unban", "timeout", "untimeout", "clear", "warn"],
-            "🔧 Utility": ["ping", "serverinfo", "userinfo", "avatar", "roleinfo", "botinfo"],
-            "🎉 Fun": ["roll", "flip", "8ball", "choose", "poll", "rps", "say"],
+        # Dynamically build the command list from loaded cogs
+        cog_emojis = {
+            "Moderation": "🛡️",
+            "Utility": "🔧",
+            "Fun": "🎉",
         }
 
-        for category, cmds in categories.items():
-            cmd_list = []
-            for name in cmds:
-                cmd = self.bot.get_command(name)
-                if cmd:
-                    cmd_list.append(f"`!{cmd.name}`")
-            if cmd_list:
-                embed.add_field(name=category, value=" ".join(cmd_list), inline=False)
+        for cog_name, emoji in cog_emojis.items():
+            cog = self.bot.get_cog(cog_name)
+            if not cog:
+                continue
+            cmds = [c for c in cog.get_commands() if not c.hidden]
+            if cmds:
+                embed.add_field(
+                    name=f"{emoji} {cog_name}",
+                    value=" ".join(f"`!{c.name}`" for c in cmds),
+                    inline=False,
+                )
 
         embed.set_footer(text=f"Requested by {ctx.author.display_name}")
         await ctx.send(embed=embed)

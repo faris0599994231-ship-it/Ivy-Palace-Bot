@@ -35,7 +35,7 @@ class Fun(commands.Cog):
     @commands.command(name="flip", aliases=["coinflip", "coin"])
     async def flip(self, ctx):
         """Flip a coin. Usage: !flip"""
-        result = random.choice(["Heads 🪙", "Tails 🪙"])
+        result = random.choice(["Heads", "Tails"])
         embed = discord.Embed(title="🪙 Coin Flip", description=f"It landed on **{result}**!", color=discord.Color.gold())
         await ctx.send(embed=embed)
 
@@ -86,9 +86,17 @@ class Fun(commands.Cog):
         )
         embed.set_footer(text=f"Poll by {ctx.author.display_name}")
         msg = await ctx.send(embed=embed)
-        await msg.add_reaction("✅")
-        await msg.add_reaction("❌")
-        await ctx.message.delete()
+        try:
+            await msg.add_reaction("✅")
+            await msg.add_reaction("❌")
+        except (discord.Forbidden, discord.HTTPException):
+            pass  # reactions failed silently — poll embed is still visible
+        # Only delete the invoking message if we have permission
+        if ctx.channel.permissions_for(ctx.guild.me).manage_messages:
+            try:
+                await ctx.message.delete()
+            except (discord.Forbidden, discord.HTTPException):
+                pass
 
     @commands.command(name="rps")
     async def rps(self, ctx, choice: str):
@@ -117,9 +125,14 @@ class Fun(commands.Cog):
     @commands.command(name="say")
     @commands.has_permissions(manage_messages=True)
     async def say(self, ctx, *, message: str):
-        """Make the bot say something. Usage: !say <message>"""
-        await ctx.message.delete()
-        await ctx.send(message)
+        """Make the bot repeat a message (no mass mentions). Usage: !say <message>"""
+        # Strip mass mentions to prevent abuse
+        safe_message = message.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
+        try:
+            await ctx.message.delete()
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        await ctx.send(safe_message)
 
 
 async def setup(bot):

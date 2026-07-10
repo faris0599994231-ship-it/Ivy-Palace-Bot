@@ -1,45 +1,74 @@
-# [Project name]
+# Discord Bot
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A general-purpose Discord bot built with Python and discord.py, featuring moderation, utility, and fun commands.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `cd discord-bot && python main.py` — run the bot (managed via "Discord Bot" workflow)
+- Required secret: `DISCORD_BOT_TOKEN` — your bot token from discord.com/developers
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3.11 + discord.py 2.x
+- Cog-based command architecture
+- Prefix commands (`!`) + slash command sync
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `discord-bot/main.py` — entry point, bot setup, event handlers
+- `discord-bot/cogs/moderation.py` — kick, ban, unban, timeout, clear, warn
+- `discord-bot/cogs/utility.py` — ping, serverinfo, userinfo, avatar, roleinfo, botinfo
+- `discord-bot/cogs/fun.py` — roll, flip, 8ball, choose, poll, rps, say
+- `discord-bot/cogs/help.py` — custom help command
+
+## Commands
+
+### 🛡️ Moderation (requires permissions)
+| Command | Description |
+|---|---|
+| `!kick @user [reason]` | Kick a member |
+| `!ban @user [reason]` | Ban a member |
+| `!unban <user_id>` | Unban by user ID |
+| `!timeout @user <minutes> [reason]` | Timeout a member |
+| `!untimeout @user` | Remove timeout |
+| `!clear [amount]` | Delete messages (1–100, default 10) |
+| `!warn @user [reason]` | Warn a member via embed + DM |
+
+### 🔧 Utility
+| Command | Description |
+|---|---|
+| `!ping` | Bot latency |
+| `!serverinfo` | Server statistics |
+| `!userinfo [@user]` | User info |
+| `!avatar [@user]` | Display avatar |
+| `!roleinfo <role>` | Role details |
+| `!botinfo` | Bot statistics |
+
+### 🎉 Fun
+| Command | Description |
+|---|---|
+| `!roll [NdN]` | Roll dice (e.g. `!roll 2d20`) |
+| `!flip` | Flip a coin |
+| `!8ball <question>` | Ask the magic 8-ball |
+| `!choose opt1 \| opt2` | Pick between options |
+| `!poll <question>` | Create a ✅/❌ poll |
+| `!rps <rock/paper/scissors>` | Play RPS |
+| `!say <message>` | Bot repeats your message |
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Cogs pattern keeps commands organized and modular — new features go in a new cog file
+- Bot token loaded from `DISCORD_BOT_TOKEN` env secret only — never hardcoded
+- Error handling in `on_command_error` covers missing permissions, bad args, and member not found
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+_Populate as you build._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Voice commands require PyNaCl (`pip install discord.py[voice]`) — not installed by default
+- `!say` and `!clear` require `manage_messages` permission
+- Timeout requires `moderate_members` permission (Discord server setting)
+- Bot needs `Message Content Intent` enabled in the Discord Developer Portal (Bot → Privileged Gateway Intents)
+- Bot needs `Server Members Intent` enabled for `!userinfo` and online count in `!serverinfo`

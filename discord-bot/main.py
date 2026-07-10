@@ -51,7 +51,7 @@ async def on_ready():
             type=discord.ActivityType.watching, name="over the server | /help"
         )
     )
-    guild = discord.Object(id=1086980387290501291)
+    guild = discord.Object(id=1086980337290501291)
     try:
         bot.tree.copy_global_to(guild=guild)
         synced = await bot.tree.sync(guild=guild)

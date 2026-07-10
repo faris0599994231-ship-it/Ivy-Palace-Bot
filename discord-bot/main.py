@@ -51,9 +51,11 @@ async def on_ready():
             type=discord.ActivityType.watching, name="over the server | /help"
         )
     )
+    guild = discord.Object(id=1086980387290501291)
     try:
-        synced = await bot.tree.sync()
-        logger.info(f"Synced {len(synced)} slash command(s)")
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+        logger.info(f"Synced {len(synced)} slash command(s) to guild {guild.id}")
     except Exception as e:
         logger.error(f"Failed to sync slash commands: {e}")
 

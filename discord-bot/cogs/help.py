@@ -1,58 +1,65 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 
 class Help(commands.Cog):
-    """Custom help command."""
+    """Help command."""
 
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="help", aliases=["h", "commands"])
-    async def help_command(self, ctx, *, command_name: str = None):
-        """Show all commands or info about a specific command. Usage: !help [command]"""
-        if command_name:
-            cmd = self.bot.get_command(command_name)
+    @app_commands.command(name="help", description="Show all available slash commands")
+    @app_commands.describe(command="A specific command to get details for (optional)")
+    async def help_command(self, interaction: discord.Interaction, command: str = None):
+        if command:
+            # Find the command in the tree
+            cmd = self.bot.tree.get_command(command)
             if not cmd:
-                return await ctx.send(f"❌ Command `{command_name}` not found. Use `!help` to see all commands.")
+                return await interaction.response.send_message(
+                    f"❌ Command `/{command}` not found. Use `/help` to see all commands.",
+                    ephemeral=True,
+                )
             embed = discord.Embed(
-                title=f"📖 Command: !{cmd.name}",
-                description=cmd.help or "No description available.",
+                title=f"📖 /{cmd.name}",
+                description=cmd.description or "No description available.",
                 color=discord.Color.blurple(),
             )
-            if cmd.aliases:
-                embed.add_field(name="Aliases", value=", ".join(f"`!{a}`" for a in cmd.aliases), inline=False)
-            await ctx.send(embed=embed)
+            if hasattr(cmd, "_params"):
+                params = [f"`{name}` — {p.description}" for name, p in cmd._params.items()]
+                if params:
+                    embed.add_field(name="Parameters", value="\n".join(params), inline=False)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         embed = discord.Embed(
-            title="📖 Bot Commands",
-            description="Use `!help <command>` for more info on a specific command.\nPrefix: `!`",
+            title="📖 Slash Commands",
+            description="Use `/help <command>` for details on a specific command.",
             color=discord.Color.blurple(),
         )
         embed.set_thumbnail(url=self.bot.user.display_avatar.url)
 
-        # Dynamically build the command list from loaded cogs
         cog_emojis = {
-            "Moderation": "🛡️",
-            "Utility": "🔧",
-            "Fun": "🎉",
+            "Moderation": ("🛡️", ["kick", "ban", "unban", "timeout", "untimeout", "clear", "warn"]),
+            "Utility":    ("🔧", ["ping", "serverinfo", "userinfo", "avatar", "roleinfo", "botinfo"]),
+            "Fun":        ("🎉", ["roll", "flip", "eightball", "choose", "poll", "rps", "say"]),
         }
 
-        for cog_name, emoji in cog_emojis.items():
+        for cog_name, (emoji, cmd_names) in cog_emojis.items():
             cog = self.bot.get_cog(cog_name)
             if not cog:
                 continue
-            cmds = [c for c in cog.get_commands() if not c.hidden]
-            if cmds:
+            loaded = {c.name for c in cog.get_app_commands()}
+            visible = [name for name in cmd_names if name in loaded]
+            if visible:
                 embed.add_field(
                     name=f"{emoji} {cog_name}",
-                    value=" ".join(f"`!{c.name}`" for c in cmds),
+                    value=" ".join(f"`/{name}`" for name in visible),
                     inline=False,
                 )
 
-        embed.set_footer(text=f"Requested by {ctx.author.display_name}")
-        await ctx.send(embed=embed)
+        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot):

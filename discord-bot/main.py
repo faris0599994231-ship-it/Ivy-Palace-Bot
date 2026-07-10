@@ -1,5 +1,6 @@
 import os
 import discord
+from discord import app_commands
 from discord.ext import commands
 import logging
 
@@ -11,11 +12,35 @@ if not TOKEN:
     raise RuntimeError("DISCORD_BOT_TOKEN environment variable is not set.")
 
 intents = discord.Intents.default()
-intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
+
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """Global slash command error handler."""
+    if isinstance(error, app_commands.MissingPermissions):
+        perms = ", ".join(error.missing_permissions)
+        msg = f"❌ You need the **{perms}** permission(s) to use this command."
+    elif isinstance(error, app_commands.BotMissingPermissions):
+        perms = ", ".join(error.missing_permissions)
+        msg = f"❌ I need the **{perms}** permission(s) to do that."
+    elif isinstance(error, app_commands.NoPrivateMessage):
+        msg = "❌ This command can only be used in a server."
+    elif isinstance(error, app_commands.CheckFailure):
+        msg = "❌ You don't have permission to use this command."
+    elif isinstance(error, app_commands.CommandOnCooldown):
+        msg = f"❌ This command is on cooldown. Try again in {error.retry_after:.1f}s."
+    else:
+        logger.error(f"Unhandled app command error: {error}")
+        msg = "❌ An unexpected error occurred."
+
+    if interaction.response.is_done():
+        await interaction.followup.send(msg, ephemeral=True)
+    else:
+        await interaction.response.send_message(msg, ephemeral=True)
 
 
 @bot.event
@@ -23,7 +48,7 @@ async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(
         activity=discord.Activity(
-            type=discord.ActivityType.watching, name="over the server | !help"
+            type=discord.ActivityType.watching, name="over the server | /help"
         )
     )
     try:
@@ -31,21 +56,6 @@ async def on_ready():
         logger.info(f"Synced {len(synced)} slash command(s)")
     except Exception as e:
         logger.error(f"Failed to sync slash commands: {e}")
-
-
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ You don't have permission to use this command.")
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing argument: `{error.param.name}`. Use `!help {ctx.command}` for usage.")
-    elif isinstance(error, commands.MemberNotFound):
-        await ctx.send("❌ Member not found.")
-    elif isinstance(error, commands.CommandNotFound):
-        pass  # silently ignore unknown commands
-    else:
-        logger.error(f"Unhandled error in {ctx.command}: {error}")
-        await ctx.send("❌ An unexpected error occurred.")
 
 
 async def load_cogs():

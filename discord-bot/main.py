@@ -61,7 +61,7 @@ async def on_ready():
 
 
 async def load_cogs():
-    for cog in ["cogs.moderation", "cogs.utility", "cogs.fun", "cogs.help"]:
+    for cog in ["cogs.moderation", "cogs.utility", "cogs.fun", "cogs.help", "cogs.music"]:
         try:
             await bot.load_extension(cog)
             logger.info(f"Loaded {cog}")

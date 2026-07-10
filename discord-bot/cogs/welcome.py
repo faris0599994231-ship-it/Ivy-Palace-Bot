@@ -99,10 +99,11 @@ class Welcome(commands.Cog):
     @welcome_group.command(name="channel", description="Set the channel where welcome messages are sent.")
     @app_commands.describe(channel="The text channel to send welcome messages in.")
     async def set_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await interaction.response.defer(ephemeral=True)
         cfg = _guild_cfg(self._data, interaction.guild.id)
         cfg["channel_id"] = channel.id
         _save(self._data)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Welcome channel set to {channel.mention}.", ephemeral=True
         )
 
@@ -114,46 +115,49 @@ class Welcome(commands.Cog):
         )
     )
     async def set_message(self, interaction: discord.Interaction, message: str):
+        await interaction.response.defer(ephemeral=True)
         cfg = _guild_cfg(self._data, interaction.guild.id)
         cfg["message"] = message
         _save(self._data)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Welcome message updated.\n\n**Preview:**\n{self._preview(message, interaction.user, interaction.guild)}",
             ephemeral=True,
         )
 
     @welcome_group.command(name="toggle", description="Enable or disable welcome messages.")
     async def toggle(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         cfg = _guild_cfg(self._data, interaction.guild.id)
         cfg["enabled"] = not cfg["enabled"]
         _save(self._data)
         state = "✅ enabled" if cfg["enabled"] else "⏸️ disabled"
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Welcome messages are now **{state}**.", ephemeral=True
         )
 
     @welcome_group.command(name="test", description="Send a test welcome message to the configured channel.")
     async def test(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         cfg = _guild_cfg(self._data, interaction.guild.id)
         if not cfg["channel_id"]:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ No welcome channel set. Use `/welcome channel` first.", ephemeral=True
             )
             return
         channel = interaction.guild.get_channel(cfg["channel_id"])
         if channel is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ The configured channel no longer exists. Please set a new one.", ephemeral=True
             )
             return
         embed = self._build_embed(interaction.user, cfg["message"])
         try:
             await channel.send(embed=embed)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ Test welcome message sent to {channel.mention}.", ephemeral=True
             )
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ I don't have permission to send messages in {channel.mention}.", ephemeral=True
             )
 
@@ -183,10 +187,11 @@ class Welcome(commands.Cog):
 
     @welcome_group.command(name="reset", description="Reset the welcome message to the default template.")
     async def reset(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         cfg = _guild_cfg(self._data, interaction.guild.id)
         cfg["message"] = DEFAULT_MESSAGE
         _save(self._data)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "✅ Welcome message reset to the default template.", ephemeral=True
         )
 

@@ -24,12 +24,12 @@ args = "Discord Bot"
 name = "Discord Bot"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd discord-bot && python main.py"
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd discord-bot && bash run.sh"
 
 [agent]
 stack = "PNPM_WORKSPACE"

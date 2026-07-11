@@ -4,6 +4,8 @@ from discord import app_commands
 from discord.ext import commands
 import logging
 
+from keep_alive import keep_alive
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("discord_bot")
 
@@ -70,6 +72,7 @@ async def load_cogs():
 
 
 async def main():
+    keep_alive()
     async with bot:
         await load_cogs()
         await bot.start(TOKEN)

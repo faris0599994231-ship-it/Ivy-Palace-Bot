@@ -32,14 +32,22 @@ def _load_opus():
 _load_opus()
 
 YTDL_OPTIONS = {
-    "format": "bestaudio/best",
+    "format": "bestaudio[ext=m4a]/bestaudio/best",
     "noplaylist": True,
     "nocheckcertificate": True,
-    "ignoreerrors": False,
+    "ignoreerrors": True,  # let playlist/search extraction skip broken entries instead of raising
     "quiet": True,
     "no_warnings": True,
-    "default_search": "ytsearch1",
+    "default_search": "ytsearch5",  # pull a few candidates so we can skip blocked/broken ones
     "source_address": "0.0.0.0",
+    "extractor_args": {
+        # "web" (yt-dlp's default client) is the one YouTube's bot-check/PO-token
+        # gate hits hardest. tv/android/web_safari clients route around it without
+        # needing cookies for the vast majority of public videos.
+        "youtube": {
+            "player_client": ["tv", "android", "web_safari"],
+        }
+    },
 }
 
 FFMPEG_OPTIONS = {
@@ -48,6 +56,10 @@ FFMPEG_OPTIONS = {
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
+
+
+class TrackNotFoundError(Exception):
+    """Raised when no playable track could be found/loaded for a query."""
 
 
 @dataclass
@@ -72,20 +84,64 @@ class GuildState:
     voice_client: discord.VoiceClient | None = None
 
 
+def _extract_stream_url(data: dict) -> str | None:
+    """Pull a playable direct URL out of a yt-dlp info dict, handling the
+    various shapes extract_info can return depending on format selection."""
+    if data.get("url"):
+        return data["url"]
+    for fmt in reversed(data.get("requested_formats") or []):
+        if fmt.get("url"):
+            return fmt["url"]
+    for fmt in reversed(data.get("formats") or []):
+        if fmt.get("acodec") not in (None, "none") and fmt.get("url"):
+            return fmt["url"]
+    return None
+
+
+def _extract_info_sync(query: str) -> dict:
+    return ytdl.extract_info(query, download=False)
+
+
 async def fetch_song(query: str, requester: str) -> Song:
-    """Run yt-dlp in a thread pool to avoid blocking the event loop."""
+    """Run yt-dlp in a thread pool to avoid blocking the event loop.
+
+    Raises TrackNotFoundError with a clear reason if nothing playable
+    could be resolved (as opposed to swallowing every failure the same way).
+    """
     loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
-    # extract_info with default_search returns a search result dict with 'entries'
-    if "entries" in data:
-        data = data["entries"][0]
-    return Song(
-        url=data["url"],
-        title=data.get("title", "Unknown"),
-        duration=data.get("duration", 0),
-        webpage_url=data.get("webpage_url", data.get("url", "")),
-        requester=requester,
-    )
+    try:
+        data = await loop.run_in_executor(None, _extract_info_sync, query)
+    except yt_dlp.utils.DownloadError as e:
+        logger.error(f"yt-dlp DownloadError for query '{query}': {e}")
+        raise TrackNotFoundError(str(e)) from e
+
+    if data is None:
+        raise TrackNotFoundError("yt-dlp returned no data.")
+
+    # Direct URL/query resolves to a single info dict; searches resolve to
+    # {'entries': [...]}. With ignoreerrors=True, individual bad entries
+    # (private/deleted/geo-blocked videos) come back as None — skip those.
+    candidates = data["entries"] if "entries" in data else [data]
+    candidates = [c for c in candidates if c]
+
+    if not candidates:
+        raise TrackNotFoundError("No results found for that query.")
+
+    last_error = None
+    for candidate in candidates:
+        stream_url = _extract_stream_url(candidate)
+        if not stream_url:
+            last_error = "no playable audio stream in result"
+            continue
+        return Song(
+            url=stream_url,
+            title=candidate.get("title", "Unknown"),
+            duration=candidate.get("duration", 0) or 0,
+            webpage_url=candidate.get("webpage_url", candidate.get("url", "")),
+            requester=requester,
+        )
+
+    raise TrackNotFoundError(last_error or "Could not resolve a playable stream.")
 
 
 class Music(commands.Cog):
@@ -151,9 +207,16 @@ class Music(commands.Cog):
         # Fetch song info
         try:
             song = await fetch_song(query, str(interaction.user))
+        except TrackNotFoundError as e:
+            logger.warning(f"Track not found for query '{query}': {e}")
+            return await interaction.followup.send(
+                f"❌ Could not find or load that track: {e}", ephemeral=True
+            )
         except Exception as e:
-            logger.error(f"yt-dlp error: {e}")
-            return await interaction.followup.send("❌ Could not find or load that track. Try a different search or URL.", ephemeral=True)
+            logger.error(f"Unexpected error fetching track for query '{query}': {e}")
+            return await interaction.followup.send(
+                "❌ Something went wrong loading that track. Please try again.", ephemeral=True
+            )
 
         # Play or queue
         if state.voice_client.is_playing() or state.voice_client.is_paused():

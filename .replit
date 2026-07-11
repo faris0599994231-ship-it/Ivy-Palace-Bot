@@ -3,7 +3,7 @@ modules = ["nodejs-24", "python-3.11"]
 [deployment]
 router = "application"
 deploymentTarget = "vm"
-run = ["bash", "-c", "cd discord-bot && bash run.sh"]
+run = ["bash", "-c", "cd discord-bot && python3 main.py"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]

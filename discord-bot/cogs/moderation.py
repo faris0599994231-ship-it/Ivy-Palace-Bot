@@ -185,8 +185,23 @@ class Moderation(commands.Cog):
             )
             await member.send(embed=dm_embed)
         except (discord.Forbidden, discord.HTTPException):
-            pass  # DMs closed or blocked — warning still issued in channel
+                    pass  # DMs closed or blocked - warning still issued in channel
+    @app_commands.command(name="say", description="Sends a message as the bot")
+    @app_commands.describe(
+        message="The text you want to send",
+        image="Select an image from your device"
+    )
+    async def say(self, interaction: discord.Interaction, message: str, image: discord.Attachment = None):
+        # 1. Send the private confirmation message to you first
+        await interaction.response.send_message("✅ Sent!", ephemeral=True)
+        
+        # 2. Send the actual message/image to the channel using the bot's account
+        if image:
+            file = await image.to_file()
+            await interaction.channel.send(content=message, file=file)
+        else:
+            await interaction.channel.send(content=message)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(Moderation(bot))

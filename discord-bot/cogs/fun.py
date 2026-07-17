@@ -134,15 +134,6 @@ class Fun(commands.Cog):
         embed.add_field(name="Result", value=result, inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="say", description="Make the bot send a message (no mass mentions)")
-    @app_commands.describe(message="The message to send")
-    @app_commands.checks.has_permissions(manage_messages=True)
-    async def say(self, interaction: discord.Interaction, message: str):
-        # Strip mass mentions to prevent abuse
-        safe_message = message.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
-        await interaction.response.send_message("✅ Sent!", ephemeral=True)
-        await interaction.channel.send(safe_message)
-
 
 async def setup(bot):
     await bot.add_cog(Fun(bot))

@@ -1,8 +1,11 @@
 import os
+import asyncio
+import logging
+
 import discord
+import requests
 from discord import app_commands
 from discord.ext import commands
-import logging
 
 from keep_alive import keep_alive
 
@@ -63,13 +66,72 @@ async def on_ready():
 
 
 async def load_cogs():
-    for cog in ["cogs.moderation", "cogs.utility", "cogs.fun", "cogs.help", "cogs.music", "cogs.welcome", "cogs.alive"]:
+    for cog in [
+        "cogs.moderation",
+        "cogs.utility",
+        "cogs.fun",
+        "cogs.help",
+        "cogs.music",
+        "cogs.welcome",
+        "cogs.alive",
+    ]:
         try:
             await bot.load_extension(cog)
             logger.info(f"Loaded {cog}")
         except Exception as e:
             logger.error(f"Failed to load {cog}: {e}")
 
+
+# ---------------------------------------------------------------------------
+# Steam game info helper
+# ---------------------------------------------------------------------------
+
+def get_steam_game_info(game_name):
+    search_url = (
+        f"https://store.steampowered.com/api/storesearch/"
+        f"?term={game_name}&l=english&cc=US"
+    )
+    response = requests.get(search_url).json()
+    if response and "items" in response and len(response["items"]) > 0:
+        appid = response["items"][0]["id"]
+        details_url = (
+            f"https://store.steampowered.com/api/appdetails"
+            f"?appids={appid}&l=english"
+        )
+        details = requests.get(details_url).json()
+        return details.get(str(appid), {}).get("data")
+    return None
+
+
+@bot.tree.command(name="game", description="Search for a game on Steam store")
+@app_commands.describe(name="The name of the game you want to search")
+async def game(interaction: discord.Interaction, name: str):
+    await interaction.response.defer()
+    game_data = get_steam_game_info(name)
+    if game_data:
+        embed = discord.Embed(
+            title=game_data["name"],
+            url=f"https://store.steampowered.com/app/{game_data['steam_appid']}",
+            color=discord.Color.green(),
+        )
+        embed.set_thumbnail(url=game_data["header_image"])
+        price_info = game_data.get("price_overview", {})
+        price = price_info.get("final_formatted", "Free / Unknown")
+        embed.add_field(name="Price", value=price, inline=True)
+        embed.add_field(
+            name="Developer",
+            value=", ".join(game_data.get("developers", ["Unknown"])),
+            inline=True,
+        )
+        embed.set_footer(text="Data provided by Steam")
+        await interaction.followup.send(embed=embed)
+    else:
+        await interaction.followup.send("Sorry, I could not find that game on the store.")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 async def main():
     keep_alive()
@@ -79,5 +141,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

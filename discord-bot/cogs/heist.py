@@ -1,6 +1,11 @@
 """
 HeistManager — GTA Online Heist Queue System
 Commands: /heist_join  /heist_leave  /heist_list  /heist_start  /heist_clear
+
+No defer() is used — all operations are synchronous JSON I/O that completes
+well within Discord's 3-second response window, so we respond in one shot.
+This avoids "already acknowledged" crashes when the restart loop briefly runs
+two bot instances at the same time.
 """
 
 import json
@@ -48,27 +53,27 @@ def _guild_queue(data: dict, guild_id: int) -> dict:
     key = str(guild_id)
     if key not in data:
         data[key] = {
-            "heist_name": None,
-            "players": [],       # list of {id, name, joined_at}
+            "heist_name":  None,
+            "players":     [],       # list of {id, name, joined_at}
             "max_players": MAX_PLAYERS,
-            "status": "open",    # "open" | "full"
+            "status":      "open",   # "open" | "full"
         }
     return data[key]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Embed builder
+# Embed builders
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_queue_embed(queue: dict, guild: discord.Guild) -> discord.Embed:
-    players   = queue["players"]
-    max_p     = queue["max_players"]
-    filled    = len(players)
-    is_full   = queue["status"] == "full"
-    name      = queue["heist_name"] or "GTA Online Heist"
+def _queue_embed(queue: dict, guild: discord.Guild) -> discord.Embed:
+    players  = queue["players"]
+    max_p    = queue["max_players"]
+    filled   = len(players)
+    is_full  = queue["status"] == "full"
+    name     = queue["heist_name"] or "GTA Online Heist"
 
-    status_icon  = "🔴 FULL"       if is_full else "🟢 OPEN"
-    colour       = RED             if is_full else GOLD
+    status_icon = "🔴 FULL" if is_full else "🟢 OPEN"
+    colour      = RED       if is_full else GOLD
 
     embed = discord.Embed(
         title=f"🎯  {name}",
@@ -76,7 +81,6 @@ def _build_queue_embed(queue: dict, guild: discord.Guild) -> discord.Embed:
         timestamp=datetime.now(timezone.utc),
     )
 
-    # Slot rows
     slots_text = ""
     for i in range(max_p):
         if i < filled:
@@ -86,18 +90,26 @@ def _build_queue_embed(queue: dict, guild: discord.Guild) -> discord.Embed:
             slots_text += f"`[{i + 1}]` ─ *Empty slot*\n"
 
     embed.add_field(name=f"👥  Crew  ({filled}/{max_p})", value=slots_text, inline=False)
-    embed.add_field(name="📡  Lobby Status",  value=status_icon,               inline=True)
-    embed.add_field(name="🎮  Platform",      value="GTA Online",               inline=True)
-    embed.add_field(name="💰  Max Players",   value=str(max_p),                 inline=True)
+    embed.add_field(name="📡  Lobby Status", value=status_icon,  inline=True)
+    embed.add_field(name="🎮  Platform",     value="GTA Online", inline=True)
+    embed.add_field(name="💰  Max Players",  value=str(max_p),   inline=True)
 
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
-
     embed.set_footer(
         text=f"{guild.name}  •  GTA Heist Queue",
-        icon_url=guild.icon.url if guild.icon else discord.Embed.Empty,
+        icon_url=guild.icon.url if guild.icon else None,
     )
     return embed
+
+
+def _simple_embed(title: str, description: str, colour: int) -> discord.Embed:
+    return discord.Embed(
+        title=title,
+        description=description,
+        colour=colour,
+        timestamp=datetime.now(timezone.utc),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,8 +120,8 @@ class HeistManager(commands.Cog):
     """GTA Online Heist Queue — join, leave, and manage lobby sign-ups."""
 
     def __init__(self, bot: commands.Bot):
-        self.bot  = bot
-        self._data: dict = _load()
+        self.bot   = bot
+        self._data = _load()
 
     # ── /heist_join ──────────────────────────────────────────────────────────
 
@@ -124,19 +136,16 @@ class HeistManager(commands.Cog):
         interaction: discord.Interaction,
         heist_name: str = None,
     ):
-        await interaction.response.defer(ephemeral=True)
-
         queue = _guild_queue(self._data, interaction.guild.id)
 
-        # If the caller names a new heist and it differs from the active one,
-        # only allow admins to switch (prevents random members hijacking it).
+        # Only admins may switch an in-progress queue to a different heist name
         if (
             heist_name
             and queue["heist_name"]
             and heist_name.strip() != queue["heist_name"]
             and not interaction.user.guild_permissions.manage_guild
         ):
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"❌ A queue for **{queue['heist_name']}** is already active. "
                 "Ask an admin to `/heist_clear` before starting a new one.",
                 ephemeral=True,
@@ -149,18 +158,19 @@ class HeistManager(commands.Cog):
         if not queue["heist_name"]:
             queue["heist_name"] = "GTA Online Heist"
 
-        # Already in queue?
         uid = interaction.user.id
+
+        # Already in queue?
         if any(p["id"] == uid for p in queue["players"]):
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "⚠️ You're already in the queue, criminal. Sit tight.",
                 ephemeral=True,
             )
             return
 
-        # Full?
+        # Queue full?
         if len(queue["players"]) >= queue["max_players"]:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"🔴 The lobby for **{queue['heist_name']}** is full "
                 f"({queue['max_players']}/{queue['max_players']}). Try again next time.",
                 ephemeral=True,
@@ -173,20 +183,20 @@ class HeistManager(commands.Cog):
             "joined_at": datetime.now(timezone.utc).isoformat(),
         })
 
-        # Auto-mark full
+        # Auto-mark full when last slot fills
         if len(queue["players"]) >= queue["max_players"]:
             queue["status"] = "full"
 
         _save(self._data)
 
         pos = len(queue["players"])
-        embed = discord.Embed(
-            title="✅  Added to the Crew",
-            description=(
+        embed = _simple_embed(
+            "✅  Added to the Crew",
+            (
                 f"**{interaction.user.display_name}** is in — spot **#{pos}** of "
                 f"{queue['max_players']} for **{queue['heist_name']}**."
             ),
-            colour=GREEN,
+            GREEN,
         )
         if queue["status"] == "full":
             embed.add_field(
@@ -194,7 +204,7 @@ class HeistManager(commands.Cog):
                 value="The crew is complete! Use `/heist_start` to announce the launch.",
                 inline=False,
             )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ── /heist_leave ─────────────────────────────────────────────────────────
 
@@ -204,34 +214,33 @@ class HeistManager(commands.Cog):
     )
     @app_commands.guild_only()
     async def heist_leave(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-
-        queue = _guild_queue(self._data, interaction.guild.id)
-        uid   = interaction.user.id
+        queue  = _guild_queue(self._data, interaction.guild.id)
+        uid    = interaction.user.id
         before = len(queue["players"])
         queue["players"] = [p for p in queue["players"] if p["id"] != uid]
 
         if len(queue["players"]) == before:
-            await interaction.followup.send(
-                "⚠️ You're not in the queue.", ephemeral=True
+            await interaction.response.send_message(
+                "⚠️ You're not in the queue.",
+                ephemeral=True,
             )
             return
 
-        # Re-open if a slot freed up
+        # Re-open a freed slot
         if queue["status"] == "full":
             queue["status"] = "open"
 
         _save(self._data)
 
-        embed = discord.Embed(
-            title="👋  Left the Queue",
-            description=(
+        embed = _simple_embed(
+            "👋  Left the Queue",
+            (
                 f"**{interaction.user.display_name}** has bailed on "
                 f"**{queue['heist_name']}**. Slot freed."
             ),
-            colour=DARK_GREY,
+            DARK_GREY,
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ── /heist_list ──────────────────────────────────────────────────────────
 
@@ -246,11 +255,10 @@ class HeistManager(commands.Cog):
         if not queue["heist_name"] and not queue["players"]:
             await interaction.response.send_message(
                 "📋 No active heist queue. Use `/heist_join` to start one!",
-                ephemeral=False,
             )
             return
 
-        embed = _build_queue_embed(queue, interaction.guild)
+        embed = _queue_embed(queue, interaction.guild)
         await interaction.response.send_message(embed=embed)
 
     # ── /heist_start ─────────────────────────────────────────────────────────
@@ -267,8 +275,6 @@ class HeistManager(commands.Cog):
         interaction: discord.Interaction,
         heist_name: str = None,
     ):
-        await interaction.response.defer()
-
         queue = _guild_queue(self._data, interaction.guild.id)
 
         if heist_name:
@@ -282,11 +288,7 @@ class HeistManager(commands.Cog):
         players  = queue["players"]
         max_p    = queue["max_players"]
         name     = queue["heist_name"]
-
-        if players:
-            mentions = "  ".join(f"<@{p['id']}>" for p in players)
-        else:
-            mentions = "*No players registered*"
+        mentions = "  ".join(f"<@{p['id']}>" for p in players) if players else "*No players registered*"
 
         embed = discord.Embed(
             title=f"🚨  HEIST LOBBY FULL  —  {name}",
@@ -305,20 +307,15 @@ class HeistManager(commands.Cog):
             ) or "*No confirmed players*",
             inline=False,
         )
-        embed.add_field(name="📡  Status",   value="🔴  FULL — Invite sent",   inline=True)
-        embed.add_field(name="🎮  Platform", value="GTA Online",               inline=True)
-        embed.add_field(
-            name="📣  Crew Mentions",
-            value=mentions,
-            inline=False,
-        )
+        embed.add_field(name="📡  Status",      value="🔴  FULL — Invite sent", inline=True)
+        embed.add_field(name="🎮  Platform",    value="GTA Online",             inline=True)
+        embed.add_field(name="📣  Crew Mentions", value=mentions,               inline=False)
+
         if interaction.guild.icon:
             embed.set_thumbnail(url=interaction.guild.icon.url)
-        embed.set_footer(
-            text=f"Launched by {interaction.user.display_name}  •  GTA Heist Queue",
-        )
+        embed.set_footer(text=f"Launched by {interaction.user.display_name}  •  GTA Heist Queue")
 
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
     # ── /heist_clear ─────────────────────────────────────────────────────────
 
@@ -329,10 +326,7 @@ class HeistManager(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     async def heist_clear(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-
-        key = str(interaction.guild.id)
-        self._data[key] = {
+        self._data[str(interaction.guild.id)] = {
             "heist_name":  None,
             "players":     [],
             "max_players": MAX_PLAYERS,
@@ -340,15 +334,12 @@ class HeistManager(commands.Cog):
         }
         _save(self._data)
 
-        embed = discord.Embed(
-            title="🗑️  Queue Cleared",
-            description=(
-                "The heist queue has been wiped. "
-                "Use `/heist_join` to start filling a new lobby."
-            ),
-            colour=DARK_GREY,
+        embed = _simple_embed(
+            "🗑️  Queue Cleared",
+            "The heist queue has been wiped. Use `/heist_join` to start filling a new lobby.",
+            DARK_GREY,
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -42,10 +42,17 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
         logger.error(f"Unhandled app command error: {error}")
         msg = "❌ An unexpected error occurred."
 
-    if interaction.response.is_done():
-        await interaction.followup.send(msg, ephemeral=True)
-    else:
-        await interaction.response.send_message(msg, ephemeral=True)
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except discord.NotFound:
+        # Interaction token expired or was already claimed by another bot instance
+        pass
+    except discord.HTTPException:
+        # Already acknowledged by another bot instance (dual gateway session)
+        pass
 
 
 @bot.event

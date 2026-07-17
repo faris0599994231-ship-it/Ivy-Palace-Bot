@@ -312,10 +312,11 @@ class HeistManager(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot   = bot
         self._data = _load()
-        # Create ONE persistent view instance and register it with the bot so
-        # button interactions are routed here even after a restart.
-        self._view = HeistView(self)
-        bot.add_view(self._view)
+        # Register a persistent view so Discord.py can route button interactions
+        # from OLD messages back to this cog after a restart.
+        # Do NOT reuse this instance for outgoing messages — create a fresh
+        # HeistView(self) for each send so Discord receives the component payload.
+        bot.add_view(HeistView(self))
 
     # ── /heist_join ──────────────────────────────────────────────────────────
 
@@ -384,18 +385,14 @@ class HeistManager(commands.Cog):
     @app_commands.guild_only()
     async def heist_list(self, interaction: discord.Interaction):
         queue = _guild_queue(self._data, interaction.guild_id)
-
-        if not queue["heist_name"] and not queue["players"]:
-            await _safe_respond(
-                interaction,
-                content="📋 No active heist queue. Use `/heist_join` to start one!",
-            )
-            return
-
+        # Always render the embed + buttons regardless of lobby state.
+        # A fresh HeistView instance is created per send so Discord includes
+        # the component payload in the message (the bot.add_view instance is
+        # for restart-recovery only and must not be reused for outgoing sends).
         await _safe_respond(
             interaction,
             embed=_queue_embed(queue, interaction.guild),
-            view=self._view,
+            view=HeistView(self),
         )
 
     # ── /heist_start ─────────────────────────────────────────────────────────

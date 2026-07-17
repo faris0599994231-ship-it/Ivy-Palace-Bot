@@ -1,16 +1,11 @@
 {
   "1086980387290501291": {
-    "heist_name": "nova",
+    "heist_name": "chapo",
     "players": [
       {
         "id": 1090319545476071424,
         "name": "\u0f12\u2022Chapo\u2022\u0f12",
-        "joined_at": "2026-07-17T12:40:42.344573+00:00"
-      },
-      {
-        "id": 759133227540545566,
-        "name": "\ud835\udd7e\ud835\udd94\ud835\udd95\ud835\udd8d\ud835\udd8e\ud835\udd86\ud83d\udc96",
-        "joined_at": "2026-07-17T13:00:53.651966+00:00"
+        "joined_at": "2026-07-17T13:14:18.754277+00:00"
       }
     ],
     "max_players": 4,

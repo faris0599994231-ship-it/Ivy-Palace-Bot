@@ -73,7 +73,6 @@ async def load_cogs():
         "cogs.help",
         "cogs.music",
         "cogs.welcome",
-        "cogs.alive",
     ]:
         try:
             await bot.load_extension(cog)

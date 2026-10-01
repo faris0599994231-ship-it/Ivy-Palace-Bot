@@ -323,7 +323,7 @@ class Music(commands.Cog):
         embed.add_field(name="Queued songs", value=str(len(state.queue)), inline=True)
         embed.set_footer(text=f"Requested by {song.requester}")
         await interaction.response.send_message(embed=embed)
-
+    
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         """Auto-disconnect if the bot is left alone in a voice channel."""
